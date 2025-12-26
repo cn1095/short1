@@ -345,7 +345,7 @@ func (rs *RedisStorage) LoadStats() (Data, error) {
     return stats, err  
 }  
   
-// 混合存储实现（优先使用Redis，回退到本地文件）  
+// 混合存储实现（Redis可用时只使用Redis，不可用时使用本地文件）  
 type HybridStorage struct {  
     redis *RedisStorage  
     file  *FileStorage  
@@ -356,32 +356,94 @@ func NewHybridStorage(redis *RedisStorage, file *FileStorage) *HybridStorage {
 }  
   
 func (hs *HybridStorage) SaveRule(code string, req ApiRequest) error {  
-    var err error  
     if redisEnabled {  
-        err = hs.redis.SaveRule(code, req)  
+        // Redis可用时，只保存到Redis  
+        err := hs.redis.SaveRule(code, req)  
         if err != nil {  
-            log.Printf("Redis保存失败，回退到文件存储: %v", err)  
+            log.Printf("Redis保存失败: %v，回退到文件存储", err)  
+            // Redis保存失败时，回退到本地文件  
+            return hs.file.SaveRule(code, req)  
         }  
+        return nil  
     }  
-    // 总是保存到本地文件作为备份  
-    fileErr := hs.file.SaveRule(code, req)  
-    if fileErr != nil {  
-        return fileErr  
-    }  
-    return err  
+    // Redis不可用时，保存到本地文件  
+    return hs.file.SaveRule(code, req)  
 }  
   
 func (hs *HybridStorage) LoadRule(code string) (ApiRequest, bool, error) {  
     if redisEnabled {  
+        // Redis可用时，从Redis读取  
         req, found, err := hs.redis.LoadRule(code)  
         if err != nil {  
-            log.Printf("Redis读取失败，回退到文件存储: %v", err)  
-        } else if found {  
-            return req, true, nil  
+            log.Printf("Redis读取失败: %v，回退到文件存储", err)  
+            // Redis读取失败时，回退到本地文件  
+            return hs.file.LoadRule(code)  
         }  
+        return req, found, nil  
     }  
+    // Redis不可用时，从本地文件读取  
     return hs.file.LoadRule(code)  
 }  
+  
+func (hs *HybridStorage) DeleteRule(code string) error {  
+    if redisEnabled {  
+        // Redis可用时，只删除Redis中的数据  
+        err := hs.redis.DeleteRule(code)  
+        if err != nil {  
+            log.Printf("Redis删除失败: %v，回退到文件存储", err)  
+            // Redis删除失败时，回退到本地文件  
+            return hs.file.DeleteRule(code)  
+        }  
+        return nil  
+    }  
+    // Redis不可用时，删除本地文件  
+    return hs.file.DeleteRule(code)  
+}  
+  
+func (hs *HybridStorage) ListRules() ([]ApiRequest, error) {  
+    if redisEnabled {  
+        // Redis可用时，从Redis获取列表  
+        rules, err := hs.redis.ListRules()  
+        if err != nil {  
+            log.Printf("Redis列表获取失败: %v，回退到文件存储", err)  
+            // Redis失败时，回退到本地文件  
+            return hs.file.ListRules()  
+        }  
+        return rules, nil  
+    }  
+    // Redis不可用时，从本地文件获取列表  
+    return hs.file.ListRules()  
+}  
+  
+func (hs *HybridStorage) SaveStats(data Data) error {  
+    if redisEnabled {  
+        // Redis可用时，只保存到Redis  
+        err := hs.redis.SaveStats(data)  
+        if err != nil {  
+            log.Printf("Redis保存统计数据失败: %v，回退到文件存储", err)  
+            // Redis保存失败时，回退到本地文件  
+            return hs.file.SaveStats(data)  
+        }  
+        return nil  
+    }  
+    // Redis不可用时，保存到本地文件  
+    return hs.file.SaveStats(data)  
+}  
+  
+func (hs *HybridStorage) LoadStats() (Data, error) {  
+    if redisEnabled {  
+        // Redis可用时，从Redis读取  
+        stats, err := hs.redis.LoadStats()  
+        if err != nil {  
+            log.Printf("Redis读取统计数据失败: %v，回退到文件存储", err)  
+            // Redis读取失败时，回退到本地文件  
+            return hs.file.LoadStats()  
+        }  
+        return stats, nil  
+    }  
+    // Redis不可用时，从本地文件读取  
+    return hs.file.LoadStats()  
+} 
   
 func (hs *HybridStorage) DeleteRule(code string) error {  
     if redisEnabled {  
@@ -430,46 +492,51 @@ func (hs *HybridStorage) LoadStats() (Data, error) {
 // 全局存储实例  
 var storage Storage
 
-// 同步本地数据到Redis  
+// 同步本地数据到Redis（智能同步策略）  
 func syncLocalToRedis() {  
     if !redisEnabled {  
         return  
     }  
       
-    log.Println("开始同步本地数据到Redis...")  
+    log.Println("开始智能同步本地数据到Redis...")  
       
     fileStorage := NewFileStorage(dataDir)  
     redisStorage := NewRedisStorage(redisPrefix)  
       
-    // 同步统计数据  
+    // 同步统计数据 - 比较total_visits  
     localStats, err := fileStorage.LoadStats()  
     if err != nil {  
         log.Printf("读取本地统计数据失败: %v", err)  
     } else {  
         redisStats, err := redisStorage.LoadStats()  
+        shouldSyncStats := false  
+          
         if err != nil {  
-            log.Printf("读取Redis统计数据失败: %v", err)  
-            // 保存本地统计数据到Redis  
+            // Redis中没有统计数据，需要同步  
+            shouldSyncStats = true  
+            log.Printf("Redis中没有统计数据，将同步本地数据")  
+        } else {  
+            // 比较total_visits数值  
+            if localStats.TotalVisits > redisStats.TotalVisits {  
+                shouldSyncStats = true  
+                log.Printf("本地访问次数(%d)大于Redis(%d)，将同步统计数据",   
+                    localStats.TotalVisits, redisStats.TotalVisits)  
+            } else {  
+                log.Printf("本地访问次数(%d)不大于Redis(%d)，跳过统计数据同步",   
+                    localStats.TotalVisits, redisStats.TotalVisits)  
+            }  
+        }  
+          
+        if shouldSyncStats {  
             if err := redisStorage.SaveStats(localStats); err != nil {  
                 log.Printf("保存统计数据到Redis失败: %v", err)  
             } else {  
                 log.Println("统计数据同步完成")  
             }  
-        } else {  
-            // 比较更新时间  
-            localTime, err1 := time.Parse("2006-01-02", localStats.LastVisitsUpdate)  
-            redisTime, err2 := time.Parse("2006-01-02", redisStats.LastVisitsUpdate)  
-            if err1 == nil && err2 == nil && localTime.After(redisTime) {  
-                if err := redisStorage.SaveStats(localStats); err != nil {  
-                    log.Printf("保存统计数据到Redis失败: %v", err)  
-                } else {  
-                    log.Println("统计数据同步完成（本地更新）")  
-                }  
-            }  
         }  
     }  
       
-    // 同步规则数据  
+    // 同步规则数据 - 比较更新时间  
     localRules, err := fileStorage.ListRules()  
     if err != nil {  
         log.Printf("读取本地规则数据失败: %v", err)  
@@ -481,20 +548,33 @@ func syncLocalToRedis() {
       
     for _, rule := range localRules {  
         redisRule, found, err := redisStorage.LoadRule(rule.ShortCode)  
+        shouldSync := false  
+          
         if err != nil {  
             log.Printf("检查Redis规则 %s 失败: %v", rule.ShortCode, err)  
             continue  
         }  
           
-        shouldSync := false  
         if !found {  
+            // Redis中没有该规则，需要同步  
             shouldSync = true  
+            log.Printf("Redis中没有规则 %s，将同步", rule.ShortCode)  
         } else {  
             // 比较更新时间  
             localTime, err1 := time.Parse("2006-01-02 15:04:05", rule.LastUpdate)  
             redisTime, err2 := time.Parse("2006-01-02 15:04:05", redisRule.LastUpdate)  
-            if err1 == nil && err2 == nil && localTime.After(redisTime) {  
+              
+            if err1 != nil || err2 != nil {  
+                // 时间解析失败，默认同步  
                 shouldSync = true  
+                log.Printf("规则 %s 时间解析失败，将同步", rule.ShortCode)  
+            } else if localTime.After(redisTime) {  
+                shouldSync = true  
+                log.Printf("规则 %s 本地时间(%s)比Redis(%s)新，将同步",   
+                    rule.ShortCode, rule.LastUpdate, redisRule.LastUpdate)  
+            } else {  
+                log.Printf("规则 %s 本地时间(%s)不比Redis(%s)新，跳过",   
+                    rule.ShortCode, rule.LastUpdate, redisRule.LastUpdate)  
             }  
         }  
           
@@ -510,7 +590,7 @@ func syncLocalToRedis() {
     }  
       
     log.Printf("数据同步完成: 同步 %d 条，跳过 %d 条", syncCount, skipCount)  
-}  
+}
   
 // 定期检查Redis连接并重连  
 func startRedisHealthCheck() {  
