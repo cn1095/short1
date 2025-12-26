@@ -154,3 +154,4 @@ jobs:
             /opt/shortener-${{ matrix.NAME }}
             ./go.sum
             ./go.mod
+            ./main.go
