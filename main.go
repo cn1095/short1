@@ -2075,7 +2075,6 @@ func renderAdminPage(w http.ResponseWriter, r *http.Request, data []ApiRequest) 
 }
 .search-button-group {  
     display: flex;  
-    gap: 15px;  
 	justify-content: space-between;
     align-items: center;  
     margin: 8px 0;  
