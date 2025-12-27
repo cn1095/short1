@@ -1654,6 +1654,86 @@ func adminHandler(w http.ResponseWriter, r *http.Request, dataDir string) {
 		return
 	}
 
+	// 处理批量删除请求  
+if r.Method == http.MethodPost && r.FormValue("mode") == "batch-delete" {  
+	shortCodes := r.FormValue("shortcodes")  
+	if shortCodes == "" {  
+		http.Error(w, "错误：缺少必要的参数", http.StatusBadRequest)  
+		return  
+	}  
+  
+	codeList := strings.Split(shortCodes, ",")  
+	successCount := 0  
+	failCount := 0  
+  
+	for _, code := range codeList {  
+		if code == "" {  
+			continue  
+		}  
+		err := storage.DeleteRule(strings.TrimSpace(code))  
+		if err != nil {  
+			log.Printf("删除规则 %s 失败: %v", code, err)  
+			failCount++  
+		} else {  
+			successCount++  
+		}  
+	}  
+  
+	// 删除成功后更新total_rules统计  
+	if successCount > 0 {  
+		updateTotalRulesAfterSync()  
+	}  
+  
+	w.WriteHeader(http.StatusOK)  
+	w.Write([]byte(fmt.Sprintf("批量删除完成：成功 %d 个，失败 %d 个", successCount, failCount)))  
+	return  
+}  
+  
+// 处理删除过期请求  
+if r.Method == http.MethodPost && r.FormValue("mode") == "delete-expired" {  
+	allData, err := storage.ListRules()  
+	if err != nil {  
+		http.Error(w, fmt.Sprintf("无法读取规则数据：%v", err), http.StatusInternalServerError)  
+		return  
+	}  
+  
+	now := time.Now()  
+	successCount := 0  
+	failCount := 0  
+  
+	for _, rule := range allData {  
+		if rule.Expiration != "" && rule.Expiration != "null" {  
+			expirationTime, err := time.Parse("2006-01-02 15:04:05", rule.Expiration)  
+			if err != nil {  
+				// 尝试其他时间格式  
+				expirationTime, err = time.Parse(time.RFC3339, rule.Expiration)  
+				if err != nil {  
+					continue  
+				}  
+			}  
+			  
+			if expirationTime.Before(now) {  
+				err := storage.DeleteRule(rule.ShortCode)  
+				if err != nil {  
+					log.Printf("删除过期规则 %s 失败: %v", rule.ShortCode, err)  
+					failCount++  
+				} else {  
+					successCount++  
+				}  
+			}  
+		}  
+	}  
+  
+	// 删除成功后更新total_rules统计  
+	if successCount > 0 {  
+		updateTotalRulesAfterSync()  
+	}  
+  
+	w.WriteHeader(http.StatusOK)  
+	w.Write([]byte(fmt.Sprintf("删除过期完成：成功删除 %d 个，失败 %d 个", successCount, failCount)))  
+	return  
+}
+
 	// 处理编辑请求 - 使用混合存储优先保存到Redis
 	if r.Method == http.MethodPost && r.FormValue("mode") == "edit" {
 		var data ApiRequest
@@ -1991,6 +2071,168 @@ func renderAdminPage(w http.ResponseWriter, r *http.Request, data []ApiRequest) 
 @keyframes spin {  
     0% { transform: rotate(0deg); }  
     100% { transform: rotate(360deg); }  
+}
+/* Vue样式按钮组 */  
+.button-group {  
+	display: flex;  
+	gap: 10px;  
+	margin: 15px 0;  
+	flex-wrap: wrap;  
+	align-items: center;  
+}  
+  
+.vue-btn {  
+	padding: 8px 16px;  
+	border: none;  
+	border-radius: 6px;  
+	font-size: 14px;  
+	font-weight: 500;  
+	cursor: pointer;  
+	transition: all 0.3s ease;  
+	outline: none;  
+	position: relative;  
+	overflow: hidden;  
+}  
+  
+.vue-btn:disabled {  
+	opacity: 0.5;  
+	cursor: not-allowed;  
+	transform: none !important;  
+}  
+  
+.vue-btn-primary {  
+	background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);  
+	color: white;  
+}  
+  
+.vue-btn-primary:hover:not(:disabled) {  
+	transform: translateY(-2px);  
+	box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);  
+}  
+  
+.vue-btn-success {  
+	background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);  
+	color: #2c5f2d;  
+}  
+  
+.vue-btn-success:hover:not(:disabled) {  
+	transform: translateY(-2px);  
+	box-shadow: 0 4px 12px rgba(132, 250, 176, 0.4);  
+}  
+  
+.vue-btn-danger {  
+	background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);  
+	color: white;  
+}  
+  
+.vue-btn-danger:hover:not(:disabled) {  
+	transform: translateY(-2px);  
+	box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);  
+}  
+  
+.vue-btn-warning {  
+	background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);  
+	color: #7a4f01;  
+}  
+  
+.vue-btn-warning:hover:not(:disabled) {  
+	transform: translateY(-2px);  
+	box-shadow: 0 4px 12px rgba(250, 112, 154, 0.4);  
+}  
+  
+/* 复选框样式 */  
+.checkbox-wrapper {  
+	display: flex;  
+	align-items: center;  
+	justify-content: center;  
+}  
+  
+.custom-checkbox {  
+	width: 18px;  
+	height: 18px;  
+	cursor: pointer;  
+	position: relative;  
+}  
+  
+.custom-checkbox:checked {  
+	accent-color: #667eea;  
+}  
+  
+/* Vue样式弹窗 */  
+.vue-modal {  
+	display: none;  
+	position: fixed;  
+	top: 0;  
+	left: 0;  
+	width: 100%;  
+	height: 100%;  
+	background: rgba(0, 0, 0, 0.5);  
+	z-index: 9999;  
+	animation: fadeIn 0.3s ease;  
+}  
+  
+.vue-modal.show {  
+	display: flex;  
+	justify-content: center;  
+	align-items: center;  
+}  
+  
+.vue-modal-content {  
+	background: white;  
+	border-radius: 12px;  
+	padding: 24px;  
+	max-width: 400px;  
+	width: 90%;  
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);  
+	animation: slideUp 0.3s ease;  
+	position: relative;  
+}  
+  
+.vue-modal-header {  
+	font-size: 18px;  
+	font-weight: 600;  
+	color: #2c3e50;  
+	margin-bottom: 16px;  
+	text-align: center;  
+}  
+  
+.vue-modal-body {  
+	font-size: 14px;  
+	color: #5a6c7d;  
+	line-height: 1.6;  
+	margin-bottom: 24px;  
+	text-align: center;  
+}  
+  
+.vue-modal-footer {  
+	display: flex;  
+	gap: 12px;  
+	justify-content: center;  
+}  
+  
+@keyframes fadeIn {  
+	from { opacity: 0; }  
+	to { opacity: 1; }  
+}  
+  
+@keyframes slideUp {  
+	from {   
+		opacity: 0;  
+		transform: translateY(30px);  
+	}  
+	to {   
+		opacity: 1;  
+		transform: translateY(0);  
+	}  
+}  
+  
+/* 隐藏的按钮组 */  
+.hidden-buttons {  
+	display: none;  
+}  
+  
+.hidden-buttons.show {  
+	display: flex;  
 }
 		</style>
 		<script>
@@ -2420,6 +2662,205 @@ function hideLoading() {
     var popup = document.getElementById("loadingPopup");  
     popup.style.display = "none";  
 }
+// 多选功能相关变量  
+var multiSelectMode = false;  
+  
+// 切换多选模式  
+function toggleMultiSelect() {  
+	multiSelectMode = !multiSelectMode;  
+	var hiddenButtons = document.getElementById("hiddenButtons");  
+	var multiSelectText = document.getElementById("multiSelectText");  
+	var checkboxes = document.querySelectorAll(".row-checkbox");  
+	var selectAllCheckbox = document.getElementById("selectAllCheckbox");  
+	  
+	if (multiSelectMode) {  
+		hiddenButtons.classList.add("show");  
+		multiSelectText.textContent = "关闭多选";  
+		// 显示所有复选框  
+		checkboxes.forEach(function(checkbox) {  
+			checkbox.style.display = "block";  
+		});  
+		selectAllCheckbox.style.display = "block";  
+	} else {  
+		hiddenButtons.classList.remove("show");  
+		multiSelectText.textContent = "开启多选";  
+		// 隐藏所有复选框并取消选中  
+		checkboxes.forEach(function(checkbox) {  
+			checkbox.style.display = "none";  
+			checkbox.checked = false;  
+		});  
+		selectAllCheckbox.style.display = "none";  
+		selectAllCheckbox.checked = false;  
+		updateDeleteButton();  
+	}  
+}  
+  
+// 全选当前页  
+function selectAll() {  
+	var checkboxes = document.querySelectorAll(".row-checkbox");  
+	var selectAllCheckbox = document.getElementById("selectAllCheckbox");  
+	checkboxes.forEach(function(checkbox) {  
+		if (checkbox.style.display !== "none") {  
+			checkbox.checked = true;  
+		}  
+	});  
+	selectAllCheckbox.checked = true;  
+	updateDeleteButton();  
+}  
+  
+// 取消全选  
+function deselectAll() {  
+	var checkboxes = document.querySelectorAll(".row-checkbox");  
+	var selectAllCheckbox = document.getElementById("selectAllCheckbox");  
+	checkboxes.forEach(function(checkbox) {  
+		checkbox.checked = false;  
+	});  
+	selectAllCheckbox.checked = false;  
+	updateDeleteButton();  
+}  
+  
+// 切换全选状态  
+function toggleSelectAll() {  
+	var selectAllCheckbox = document.getElementById("selectAllCheckbox");  
+	var checkboxes = document.querySelectorAll(".row-checkbox");  
+	  
+	checkboxes.forEach(function(checkbox) {  
+		if (checkbox.style.display !== "none") {  
+			checkbox.checked = selectAllCheckbox.checked;  
+		}  
+	});  
+	updateDeleteButton();  
+}  
+  
+// 更新删除选中按钮状态  
+function updateDeleteButton() {  
+	var checkboxes = document.querySelectorAll(".row-checkbox:checked");  
+	var deleteBtn = document.getElementById("deleteSelectedBtn");  
+	  
+	if (checkboxes.length > 0) {  
+		deleteBtn.disabled = false;  
+	} else {  
+		deleteBtn.disabled = true;  
+	}  
+}  
+  
+// 显示确认弹窗  
+function showConfirmModal(title, message, onConfirm) {  
+	var modal = document.getElementById("confirmModal");  
+	var modalTitle = document.getElementById("modalTitle");  
+	var modalMessage = document.getElementById("modalMessage");  
+	var confirmBtn = document.getElementById("modalConfirmBtn");  
+	  
+	modalTitle.textContent = title;  
+	modalMessage.textContent = message;  
+	  
+	// 移除之前的事件监听器  
+	var newConfirmBtn = confirmBtn.cloneNode(true);  
+	confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);  
+	  
+	// 添加新的事件监听器  
+	newConfirmBtn.addEventListener("click", function() {  
+		onConfirm();  
+		closeModal();  
+	});  
+	  
+	modal.classList.add("show");  
+}  
+  
+// 关闭弹窗  
+function closeModal() {  
+	var modal = document.getElementById("confirmModal");  
+	modal.classList.remove("show");  
+}  
+  
+// 删除过期项目  
+function deleteExpired() {  
+	showConfirmModal(  
+		"删除过期项目",  
+		"确定要删除所有已过期的项目吗？此操作不可恢复！",  
+		function() {  
+			showLoading();  
+			var xhr = new XMLHttpRequest();  
+			xhr.open("POST", "/admin?mode=delete-expired", true);  
+			xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");  
+			xhr.send();  
+			xhr.onload = function() {  
+				hideLoading();  
+				if (xhr.status === 200) {  
+					alert(xhr.responseText);  
+					location.reload();  
+				} else {  
+					alert("删除过期项目失败");  
+				}  
+			};  
+			xhr.onerror = function() {  
+				hideLoading();  
+				alert("网络错误，操作失败");  
+			};  
+		}  
+	);  
+}  
+  
+// 删除选中项目  
+function deleteSelected() {  
+	var checkboxes = document.querySelectorAll(".row-checkbox:checked");  
+	if (checkboxes.length === 0) {  
+		alert("请先选择要删除的项目");  
+		return;  
+	}  
+	  
+	var shortCodes = [];  
+	checkboxes.forEach(function(checkbox) {  
+		shortCodes.push(checkbox.value);  
+	});  
+	  
+	showConfirmModal(  
+		"删除选中项目",  
+		"确定要删除选中的 " + checkboxes.length + " 个项目吗？此操作不可恢复！",  
+		function() {  
+			showLoading();  
+			var xhr = new XMLHttpRequest();  
+			xhr.open("POST", "/admin?mode=batch-delete", true);  
+			xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");  
+			xhr.send("shortcodes=" + encodeURIComponent(shortCodes.join(",")));  
+			xhr.onload = function() {  
+				hideLoading();  
+				if (xhr.status === 200) {  
+					alert(xhr.responseText);  
+					location.reload();  
+				} else {  
+					alert("批量删除失败");  
+				}  
+			};  
+			xhr.onerror = function() {  
+				hideLoading();  
+				alert("网络错误，操作失败");  
+			};  
+		}  
+	);  
+}  
+  
+// 页面加载时隐藏复选框  
+window.onload = function() {  
+	var savedPageSize = localStorage.getItem("pageSize");  
+	if (savedPageSize) {  
+		pageSize = parseInt(savedPageSize);  
+	}  
+	updatePageSizeSelect();  
+	updateTablePagination();  
+	// 初始化长链接展开功能    
+	initLongUrlToggle();  
+	  
+	// 隐藏所有复选框  
+	var checkboxes = document.querySelectorAll(".row-checkbox");  
+	var selectAllCheckbox = document.getElementById("selectAllCheckbox");  
+	checkboxes.forEach(function(checkbox) {  
+		checkbox.style.display = "none";  
+	});  
+	if (selectAllCheckbox) {  
+		selectAllCheckbox.style.display = "none";  
+	}  
+};
 		</script>
 	</head>
 	<body>
@@ -2429,6 +2870,9 @@ function hideLoading() {
 			<table id="dataTable">
 				<thead>
 					<tr>
+						<th style="width: 50px;">  
+							<input type="checkbox" id="selectAllCheckbox" class="custom-checkbox" onchange="toggleSelectAll()">
+						</th>
 						<th>长链接内容</th>
 						<th>后缀</th>
 						<th>密码</th>
@@ -2443,6 +2887,11 @@ function hideLoading() {
 				<tbody>
 					{{range .Data}} 
 					<tr>
+						<td>  
+							<div class="checkbox-wrapper">  
+								<input type="checkbox" class="custom-checkbox row-checkbox" value="{{.ShortCode}}" onchange="updateDeleteButton()">  
+							</div>  
+						</td>
 						<td data-field="LongUrl" title="点击可展开完整内容">{{.LongUrl}}</td>
 						<td>  
     					{{if .ShortCode}}  
@@ -2472,6 +2921,18 @@ function hideLoading() {
 					{{end}}
 				</tbody>
 			</table>
+			<!-- 按钮组 -->  
+			<div class="button-group">  
+				<button class="vue-btn vue-btn-primary" onclick="toggleMultiSelect()">  
+					<span id="multiSelectText">启用多选</span>  
+				</button>  
+				<button class="vue-btn vue-btn-danger" onclick="deleteExpired()">删除过期</button>  
+				<div id="hiddenButtons" class="hidden-buttons">  
+					<button class="vue-btn vue-btn-success" onclick="selectAll()">全选</button>  
+					<button class="vue-btn vue-btn-warning" onclick="deselectAll()">取消全选</button>  
+					<button id="deleteSelectedBtn" class="vue-btn vue-btn-danger" onclick="deleteSelected()" disabled>删除选中</button>  
+				</div>  
+			</div>
 			<div class="pagination">
 				<button onclick="previousPage()">上一页</button>
 				<span id="currentPage"> 当前页: 1 / </span><span id="totalPages"> 总页数: 1</span>
@@ -2484,6 +2945,9 @@ function hideLoading() {
 				<option value="20">每页 20 项</option>
 				<option value="50">每页 50 项</option>
 				<option value="100">每页 100 项</option>
+				<option value="200">每页 200 项</option>
+				<option value="500">每页 500 项</option>
+				<option value="1000">每页 1000 项</option>
 			</select>
 			<!-- 悬浮按钮 -->
     <button class="floating-btn" onclick="showLogPopup()">查看日志</button>
@@ -2496,7 +2960,18 @@ function hideLoading() {
         <div class="log-footer">
             <button onclick="clearLog()">清空日志</button>
         </div>
-    </div>   
+    </div> 
+	<!-- Vue样式确认弹窗 -->  
+<div id="confirmModal" class="vue-modal">  
+	<div class="vue-modal-content">  
+		<div class="vue-modal-header" id="modalTitle">确认操作</div>  
+		<div class="vue-modal-body" id="modalMessage">确定要执行此操作吗？</div>  
+		<div class="vue-modal-footer">  
+			<button class="vue-btn vue-btn-primary" onclick="closeModal()">取消</button>  
+			<button class="vue-btn vue-btn-danger" id="modalConfirmBtn">确认</button>  
+		</div>  
+	</div>  
+</div>
 	<!-- 加载弹窗 -->  
 <div id="loadingPopup" class="loading-popup">  
     <div class="loading-content">  
