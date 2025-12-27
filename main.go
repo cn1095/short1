@@ -1910,7 +1910,7 @@ func renderAdminPage(w http.ResponseWriter, r *http.Request, data []ApiRequest) 
    				background-color: #f0f8ff;  
 			}  
 			td:nth-child(2).expanded {  
-    			white-space: normal;  
+    			white-space: pre-wrap; /* 保留换行和空格 */
     			max-width: none;  
     			cursor: pointer;  
 				color: #000; /* 展开后恢复黑色 */
@@ -2506,7 +2506,7 @@ td:first-child {
                                         '<option value="text" ' + (cells[i].innerText === "text" ? "selected" : "") + '>txt文本</option>';
                 } else {
                     input = document.createElement("textarea");
-                    input.value = cells[i].innerText;
+                    input.value = cells[i].textContent;
                 }
                 input.className = "editable";
                 input.oninput = function() { adjustTextAreaHeight(this); };
@@ -2576,7 +2576,7 @@ td:first-child {
                     	var field = cells[i].getAttribute("data-field");  
                     	if (field) {  
                         	var input = cells[i].querySelector("input, textarea, select");  
-                        	cells[i].innerHTML = input.value;  
+                        	cells[i].textContent = input.value;  
                         	cells[i].setAttribute("data-original", input.value);  
                     	}  
                 	}  
@@ -2602,7 +2602,7 @@ td:first-child {
 				if (i < cells.length - 1) { // 跳过最后一列（操作按钮）
 					var field = cells[i].getAttribute("data-field");
 					if (field) {
-						cells[i].innerHTML = cells[i].querySelector("input, textarea, select").value;
+						cells[i].textContent = cells[i].querySelector("input, textarea, select").value;
 					}
 				}
 			}
