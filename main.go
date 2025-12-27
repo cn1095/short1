@@ -2078,30 +2078,30 @@ func renderAdminPage(w http.ResponseWriter, r *http.Request, data []ApiRequest) 
     justify-content: space-between !important;    
     align-items: center !important;    
     margin: 8px 0 !important;    
-    flex-wrap: nowrap !important;  /* 禁止换行 */  
+    flex-wrap: nowrap !important;    
 }  
   
 .search-input {    
-    width: 200px !important;    
-    max-width: 200px !important;  /* 限制最大宽度 */  
-    min-width: 150px !important;  /* 设置最小宽度 */  
+    width: 100% !important;  /* 占用剩余所有空间 */  
+    max-width: 500px !important;  /* 设置最大宽度限制 */  
+    min-width: 200px !important;  /* 设置最小宽度 */  
     padding: 8px 12px;    
     border: 1px solid #ddd;    
     border-radius: 6px;    
     font-size: 14px;    
     outline: none;    
     transition: border-color 0.3s ease;    
-    flex-shrink: 0;  /* 防止收缩 */  
+    flex: 1;  /* 关键：让搜索框占用剩余空间 */  
 }  
   
 .button-group {  
     display: flex !important;  
     gap: 8px;  
     margin: 0 !important;  
-    flex-wrap: nowrap !important;  /* 按钮组也不换行 */  
+    flex-wrap: nowrap !important;  
     align-items: center !important;  
-    flex-shrink: 0;  /* 防止收缩 */  
-}  
+    flex-shrink: 0;  /* 防止按钮组被压缩 */  
+}
   
 .vue-btn {  
 	padding: 8px 16px;  
@@ -2935,7 +2935,6 @@ window.onload = function() {
 		<h2>管理页面</h2>
 		<div class="container">
 			<div class="search-button-group">  
-    			<input type="text" id="searchInput" onkeyup="searchTable()" placeholder="搜索关键词..." class="search-input">  
     			<!-- 按钮组 -->    
     			<div class="button-group">    
         			<button class="vue-btn vue-btn-primary" onclick="toggleMultiSelect()">    
@@ -2948,6 +2947,7 @@ window.onload = function() {
             			<button id="deleteSelectedBtn" class="vue-btn vue-btn-danger" onclick="deleteSelected()" disabled>删除选中</button>    
         			</div>    
     			</div>  
+				<input type="text" id="searchInput" onkeyup="searchTable()" placeholder="搜索关键词..." class="search-input">  
 			</div>
 			<table id="dataTable">
 				<thead>
