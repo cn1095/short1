@@ -2256,6 +2256,11 @@ td:nth-child(2) {
     max-width: 280px;    
     min-width: 200px; /* 确保有最小宽度 */  
 }
+.checkbox-wrapper {    
+    display: flex;    
+    align-items: center;    
+    justify-content: center;    
+}
 		</style>
 		<script>
 			function searchTable() {
@@ -2914,7 +2919,9 @@ window.onload = function() {
 				<thead>
 					<tr>
 						<th style="width: 50px;">  
-							<input type="checkbox" id="selectAllCheckbox" class="custom-checkbox" onchange="toggleSelectAll()">
+							<div class="checkbox-wrapper">    
+        						<input type="checkbox" id="selectAllCheckbox" class="custom-checkbox" onchange="toggleSelectAll()">  
+    						</div>
 						</th>
 						<th>长链接内容</th>
 						<th>后缀</th>
