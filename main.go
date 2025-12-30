@@ -3662,11 +3662,11 @@ func initializeIPDatabases() {
 }
 
 func runAsDaemon() {  
-    switch runtime.GOOS {  
+    switch runtime.GOOS {
     case "linux", "freebsd", "darwin":  
-        runAsDaemonUnix()  
-    case "windows":  
-        runAsDaemonWindows()  
+        runAsDaemonUnix()
+    case "windows":
+        runAsDaemonWindows()
     default:  
         log.Println("当前系统不支持后台模式")  
     }  
