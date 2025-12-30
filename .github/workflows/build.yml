@@ -135,9 +135,9 @@ jobs:
             fi
             go mod tidy
             go build -ldflags="-s -w"
-            echo "shortener ：`ls -alh shortener | awk '{print $5}'`" || true
+            echo "shortener ：`ls -alh shortener | awk '{print $5}'`" || echo "shortener.exe ：`ls -alh shortener.exe | awk '{print $5}'`"
             file shortener || file shortener.exe
-            mv -f shortener /opt/shortener-${NAME} || true
+            mv -f shortener /opt/shortener-${NAME} || mv -f shortener.exe /opt/shortener-${NAME}
             echo "build_time=$(date '+%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
             echo "build_tag=$(date '+%Y-%m-%d')" >> $GITHUB_ENV
       - name: 安装 UPX
